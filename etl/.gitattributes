@@ -1,0 +1,2 @@
+sao*.txt filter=lfs diff=lfs merge=lfs -text
+sao*.pdf filter=lfs diff=lfs merge=lfs -text
