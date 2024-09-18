@@ -5,14 +5,11 @@ Extract transactions from a file
 from datetime import datetime
 import re
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.requests import Request
 from sqlalchemy import create_engine
-
+import time
 
 # connection string to database
-connectionString = "postgresql://postgres:postgres@localhost:5432/saokedb"
+connectionString = "postgresql://postgres:postgres@jetson.local:5432/saokedb"
 
 # date time format in file
 DATE_FORMAT = "%d/%m/%Y"
@@ -69,7 +66,7 @@ IGNORE_LIST = [
     {"val": "Nội dung chi tiết/ Transactions in detail", "opt" : "in"},
     {"val": "NGÂN HÀNG TMCP NGOẠI THƯƠNG VIỆT NAM (VCB", "opt" : "in"},
     {"val": "Số tài khoản: 0011001932418", "opt" : "in"},
-    {"val": "STT", "opt" : "in"},
+    {"val": "STT", "opt" : "eq"},
     {"val": "NGÀY GIAO DỊCH", "opt" : "in"},
     {"val": "SỐ TIỀN", "opt" : "in" },
     {"val": "DIỄN GIẢI", "opt" : "in"},
@@ -91,7 +88,6 @@ IGNORE_LIST = [
     {"val": "Nội dung chi tiết/ Transactions in detail", "opt" : "in"},
     {"val": "NGÂN HÀNG TMCP NGOẠI THƯƠNG VIỆT NAM (VCB", "opt" : "in"},
     {"val": "Số tài khoản: 0011001932418", "opt" : "in"},
-    {"val": "STT", "opt" : "in"},
     {"val": "NGÀY GIAO DỊCH", "opt" : "in"},
 ]
 
@@ -146,6 +142,12 @@ def is_amount(val):
 
     pattern = r'^(?!0\d)\d{1,3}(?:\.\d{3})+$'
 
+    vals = val.split(" ")
+
+    if len(vals) > 1:
+        if re.match(pattern, vals[0]):
+            return True
+
     if re.match(pattern, val):
         return True
 
@@ -176,12 +178,30 @@ def is_id(val):
     if val == "":
         return False
 
-    pattern = r'^\d{4,}\.\d+$'
+    pattern = r'^\d{4,}[\.]\d{1,}$'
+    second_pattern = r"^\d\.\d{2}$"
 
-    if re.match(pattern, val):
+    # 33.14 pattern for id like this, fix 2 digits before dot and 2 digits
+    # after dot
+    third_pattern = r"^\d{2}\.\d{2}$"
+    # 213.1531 pattern for id like this, fix 3 digits before dot and 4 digits
+    # after dot
+    forth_pattern = r"^\d{3}\.\d{4}$"
+    # 55.202 pattern for id like this, fix 2 digits before dot and 3 digits
+    # after dot
+    fifth_pattern = r"^\d{2}\.\d{3}$"
+
+    if (
+        re.match(pattern, val)
+        or re.match(second_pattern, val)
+        or re.match(third_pattern, val)
+        or re.match(forth_pattern, val)
+        or re.match(fifth_pattern, val)
+    ):
         return True
 
     return False
+
 
 def ignore_line(line):
     """
@@ -201,7 +221,7 @@ def ignore_line(line):
     return False
 
 
-def build_result(result):
+def build_result(result, meta_data):
     """
     build a transaction from a result list
     """
@@ -212,14 +232,23 @@ def build_result(result):
 
     for i in range(len(result)):
         val = result[i]
-        if is_date(val, DATE_FORMAT):
+        if is_date(val, DATE_FORMAT) and (meta_data.get("date") == val or meta_data == {}):
             date = val
-        elif is_id(val):
+        elif is_id(val) and (meta_data.get("id") == val or meta_data == {}):
             id = val
-        elif is_amount(val):
+        elif is_amount(val) and (meta_data.get("amount") == val or meta_data == {}):
             amount = val
         else:
             subject =  subject + " " + val
+
+    if (id == ''
+    or amount == ''
+    or subject == ''
+    or date == ''):
+        time.sleep(5)
+        print("result: ", result)
+        print("meta_data: ", meta_data)
+        print(f"the processed data: date: {date}, id: {id}, amount: {amount}, subject: {subject}")
 
     return [date, id, amount, subject]
 
@@ -257,62 +286,55 @@ def read_file(path):
     sequence = 0
     # result list that contains a transaction
     result = []
+    meta_data = {}
+    line_number = 0
 
     # read file
     with open(path, "r") as file:
         for line in file:
+            line_number += 1
             val = line.strip()
+
+            if meta_data.get("line_number") is not None:
+                meta_data["line_number"].append([line_number, val])
+            else:
+                meta_data["line_number"] = [[line_number, val]]
+
             # detect a transaction that start from a sequence of integers
             # if is_date(val, DATE_FORMAT):
             # if a line is an integer
             # then we start a new transaction
             if is_date(val, DATE_FORMAT):
-                if sequence > 1:
+                if sequence > 1 or meta_data.get("date") is not None:
                     # build a transaction
                     # and add it to the result list
-                    results.append(build_result(result))
-                    # reset sequence and result list
+                    results.append(build_result(result, meta_data))
                     sequence = 0
                     result = []
+                    meta_data = {}
                 sequence += 1
                 result.append(val)
+                meta_data["date"] = val
             else:
                 # if a line is in ignore list
                 # then we skip it
                 # otherwise we add it to the result list
                 if ignore_line(val):
                     continue
+                elif is_id(val):
+                    meta_data["id"] = val
+                    result.append(val)
                 else:
                     data = val.split(' ')
                     if len(data) > 1 and is_amount(data[0]):
+                        meta_data["amount"] = data[0]
                         result.append(data[0])
-                        filter_empty_strings = [x for x in data[1:] if x]
-                        result.append(" ".join(filter_empty_strings))
+                        result.append(" ".join(list(filter(None, data[1:]))))
                     else:
                         result.append(val)
                     sequence += 1
 
     return results
-
-
-def validate(q):
-    """
-    validate a query
-    """
-    if len(q) < 3:
-        raise HTTPException(
-            status_code=400,
-            detail="Query is too short, should be at least 3 characters",
-        )
-
-    if len(q) > 50:
-        raise HTTPException(
-            status_code=400,
-            detail="Query is too long, should be at most 50 characters",
-        )
-
-    return True
-
 
 # default path to file
 path = "./saoke19_119_layout.txt"
@@ -328,7 +350,7 @@ results = read_file(path)
 # for r in results[:50]:
 #     print(r)
 #
-# print(len(results))
+print(len(results))
 
 # import to pandas dataframe
 df = pd.DataFrame(results, columns=["date", "stt", "amount", "subject"])

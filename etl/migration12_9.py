@@ -5,9 +5,6 @@ Extract transactions from a file
 from datetime import datetime
 import re
 import pandas as pd
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.requests import Request
 from sqlalchemy import create_engine
 
 
