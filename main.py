@@ -14,7 +14,7 @@ from typing import List, Dict
 from pydantic import BaseModel
 
 # connection string to database
-connectionString = "postgresql://postgres:postgres@localhost:5432/saokedb"
+connectionString = "postgresql://postgres:postgres@jetson.local:5432/saokedb"
 engine = create_engine(connectionString, echo=True)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -67,6 +67,7 @@ class Transaction(BaseModel):
     stt: str
     amount: str
     subject: str
+    provider: str
 
 class TransactionResponse(BaseModel):
     result: List[Transaction]
@@ -100,7 +101,7 @@ async def read_root(q: str = None):
             # replace this by a query to the database
             query = text(
                 """
-            SELECT date, stt, amount, subject
+            SELECT date, stt, amount, subject, provider
             FROM transactions t
             WHERE to_tsvector('english', subject) @@ plainto_tsquery('english', :q);
             """
@@ -131,6 +132,7 @@ async def read_root(q: str = None):
                     "stt": row[1],
                     "amount": row[2],
                     "subject": row[3],
+                    "provider": row[4],
                 }
                 for row in rows
             ]
@@ -145,6 +147,24 @@ async def read_root(q: str = None):
 
             return response
 
+
+@app.get("/total")
+async def total():
+    """
+    return the total number of transactions
+    """
+    with SessionLocal() as session:
+        query = text(
+                """
+                SELECT SUM(CAST(regexp_replace(amount, '\.', '', 'g') AS BIGINT)) AS total
+                FROM transactions t
+                where amount != ''
+                """
+                )
+        result = session.execute(query)
+        total = result.fetchone()[0]
+
+        return {"total": total}
 
 @app.middleware("http")
 async def custom_middleware(request: Request, call_next):
