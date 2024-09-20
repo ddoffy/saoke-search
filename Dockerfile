@@ -12,7 +12,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy the rest of the application code into the container
-COPY . /app
+COPY ./main.py /app/
 
 # Expose the port FastAPI will run on
 EXPOSE 8000
