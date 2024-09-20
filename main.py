@@ -2,7 +2,7 @@
 Extract transactions from a file
 """
 
-from typing import List
+from typing import List, Dict
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy import create_engine, text
@@ -63,43 +63,46 @@ def validate(q):
 # create a FastAPI app
 app = FastAPI()
 
+# origins that are allowed to make requests
+# replace this with the actual origin
+origins = ['*']
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-@app.middleware("http")
-async def custom_middleware(request: Request, call_next):
-    try:
-        response = await call_next(request)
-        return response
-    except HTTPException as e:
-        return {
-            "status_code": e.status_code,
-            "detail": {
-                "status_code": e.status_code,
-                "message": e.detail,
-                "status": "Bad Request",
-                "total": 0,
-                "result": [],
-            },
-        }
-    except Exception as e:
-        # Handle the exception properly here
-        return {
-            "status_code": 500,
-            "detail": {
-                "status_code": 500,
-                "message": f"Internal Server Error: {str(e)}",
-                "status": "Internal Server Error",
-                "total": 0,
-                "result": [],
-            },
-        }
+# @app.middleware("http")
+# async def custom_middleware(request: Request, call_next):
+#     try:
+#         response = await call_next(request)
+#         return response
+#     except HTTPException as e:
+#         return {
+#             "status_code": e.status_code,
+#             "detail": {
+#                 "status_code": e.status_code,
+#                 "message": e.detail,
+#                 "status": "Bad Request",
+#                 "total": 0,
+#                 "result": [],
+#             },
+#         }
+#     except Exception as e:
+#         # Handle the exception properly here
+#         return {
+#             "status_code": 500,
+#             "detail": {
+#                 "status_code": 500,
+#                 "message": f"Internal Server Error: {str(e)}",
+#                 "status": "Internal Server Error",
+#                 "total": 0,
+#                 "result": [],
+#             },
+#         }
 
 
 class Transaction(BaseModel):
@@ -154,6 +157,8 @@ async def read_root(q: str = ''):
                     "result": [],
                 },
             )
+
+        print("Rows: ", rows)
         # Convert rows to a list of dictionaries
         transactions = [
             Transaction(
@@ -165,6 +170,8 @@ async def read_root(q: str = ''):
             )
             for row in rows
         ]
+
+        print("Transaction: ", transactions)
 
         response = TransactionResponse(
             result=transactions,
