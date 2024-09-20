@@ -2,15 +2,12 @@
 Extract transactions from a file
 """
 
-from datetime import datetime
-import re
-import pandas as pd
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.requests import Request
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-from typing import List, Dict
+from typing import List
 from pydantic import BaseModel
 
 # connection string to database
@@ -52,10 +49,9 @@ def validate(q):
 
 # create a FastAPI app
 app = FastAPI()
-origins = ["*"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
