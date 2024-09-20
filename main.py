@@ -2,14 +2,13 @@
 Extract transactions from a file
 """
 
-from fastapi import FastAPI, HTTPException, Request
+from typing import List
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
-from fastapi.requests import Request
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
-from typing import List
 from pydantic import BaseModel
+from fastapi.requests import Request
 
 # connection string to database
 connectionString = "postgresql://postgres:postgres@jetson.local:5432/saokedb"
@@ -30,7 +29,7 @@ def validate(q):
                 "status": "Bad Request",
                 "total": 0,
                 "result": [],
-            }
+            },
         )
 
     if len(q) > 50:
@@ -42,49 +41,52 @@ def validate(q):
                 "status": "Bad Request",
                 "total": 0,
                 "result": [],
-            }
+            },
         )
 
     return True
+
 
 # create a FastAPI app
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=['*'],
+    allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=['*'],
-    allow_headers=['*'],
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
+
 @app.middleware("http")
-async def custom_middleware(request, call_next):
-        try:
-            response = await call_next(request)
-            return response
-        except HTTPException as e:
-            return {
+async def custom_middleware(request: Request, call_next):
+    try:
+        response = await call_next(request)
+        return response
+    except HTTPException as e:
+        return {
+            "status_code": e.status_code,
+            "detail": {
                 "status_code": e.status_code,
-                "detail": {
-                    "status_code": e.status_code,
-                    "message": e.detail,
-                    "status": "Bad Request",
-                    "total": 0,
-                    "result": [],
-                }
-            }
-        except Exception as e:
-            # Handle the exception properly here
-            return {
+                "message": e.detail,
+                "status": "Bad Request",
+                "total": 0,
+                "result": [],
+            },
+        }
+    except Exception as e:
+        # Handle the exception properly here
+        return {
+            "status_code": 500,
+            "detail": {
                 "status_code": 500,
-                "detail": {
-                    "status_code": 500,
-                    "message": "Internal Server Error",
-                    "status": "Internal Server Error",
-                    "total": 0,
-                    "result": [],
-                }
-            }
+                "message": f"Internal Server Error: {str(e)}",
+                "status": "Internal Server Error",
+                "total": 0,
+                "result": [],
+            },
+        }
+
 
 class Transaction(BaseModel):
     date: str
@@ -93,6 +95,7 @@ class Transaction(BaseModel):
     subject: str
     provider: str
 
+
 class TransactionResponse(BaseModel):
     result: List[Transaction]
     total: int
@@ -100,13 +103,14 @@ class TransactionResponse(BaseModel):
     message: str
     status_code: int
 
+
 @app.get("/", response_model=TransactionResponse)
-async def read_root(q: str = None):
+async def read_root(q: str = ''):
     """
     search transactions by term,
     return Not Found if no transaction is found
     """
-    if q is None:
+    if q is '':
         raise HTTPException(
             status_code=404,
             detail={
@@ -115,13 +119,12 @@ async def read_root(q: str = None):
                 "status": "Not Found",
                 "total": 0,
                 "result": [],
-            }
+            },
         )
     else:
         validate(q)
 
         with SessionLocal() as session:
-            # result = df[df["subject"].str.contains(q, case=False, na=False)].to_dict(orient="records")
             # replace this by a query to the database
             query = text(
                 """
@@ -147,7 +150,7 @@ async def read_root(q: str = None):
                         "status": "Not Found",
                         "total": 0,
                         "result": [],
-                    }
+                    },
                 )
             # Convert rows to a list of dictionaries
             transactions = [
@@ -179,15 +182,17 @@ async def total():
     """
     with SessionLocal() as session:
         query = text(
-                """
+            """
                 SELECT SUM(CAST(regexp_replace(amount, '\.', '', 'g') AS BIGINT)) AS total
                 FROM transactions t
                 where amount != ''
                 """
-                )
+        )
         result = session.execute(query)
-        total = result.fetchone()[0]
+        rows = result.fetchone()
+        if rows is None:
+            total = 0
+        else:
+            total = rows[0]
 
         return {"total": total}
-
-
