@@ -4,6 +4,7 @@ Extract transactions from a file
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.requests import Request
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
@@ -46,6 +47,34 @@ def validate(q):
 
     return True
 
+class GenericHttpMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        try:
+            response = await call_next(request)
+            return response
+        except HTTPException as e:
+            return {
+                "status_code": e.status_code,
+                "detail": {
+                    "status_code": e.status_code,
+                    "message": e.detail,
+                    "status": "Bad Request",
+                    "total": 0,
+                    "result": [],
+                }
+            }
+        except Exception as e:
+            # Handle the exception properly here
+            return {
+                "status_code": 500,
+                "detail": {
+                    "status_code": 500,
+                    "message": "Internal Server Error",
+                    "status": "Internal Server Error",
+                    "total": 0,
+                    "result": [],
+                }
+            }
 
 # create a FastAPI app
 app = FastAPI()
@@ -57,6 +86,7 @@ app.add_middleware(
     allow_headers=['*'],
 )
 
+app.add_middleware(GenericHttpMiddleware)
 
 class Transaction(BaseModel):
     date: str
@@ -162,20 +192,4 @@ async def total():
 
         return {"total": total}
 
-@app.middleware("http")
-async def custom_middleware(request: Request, call_next):
-    try:
-        response = await call_next(request)
-        return response
-    except Exception as e:
-        # Handle the exception properly here
-        return {
-            "status_code": 500,
-            "detail": {
-                "status_code": 500,
-                "message": "Internal Server Error",
-                "status": "Internal Server Error",
-                "total": 0,
-                "result": [],
-            }
-        }
+
