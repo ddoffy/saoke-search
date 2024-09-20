@@ -47,8 +47,18 @@ def validate(q):
 
     return True
 
-class GenericHttpMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
+# create a FastAPI app
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=['*'],
+    allow_credentials=True,
+    allow_methods=['*'],
+    allow_headers=['*'],
+)
+
+@app.middleware("http")
+async def custom_middleware(request, call_next):
         try:
             response = await call_next(request)
             return response
@@ -75,18 +85,6 @@ class GenericHttpMiddleware(BaseHTTPMiddleware):
                     "result": [],
                 }
             }
-
-# create a FastAPI app
-app = FastAPI()
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=['*'],
-    allow_credentials=True,
-    allow_methods=['*'],
-    allow_headers=['*'],
-)
-
-app.add_middleware(GenericHttpMiddleware)
 
 class Transaction(BaseModel):
     date: str
@@ -153,13 +151,13 @@ async def read_root(q: str = None):
                 )
             # Convert rows to a list of dictionaries
             transactions = [
-                {
-                    "date": row[0],
-                    "stt": row[1],
-                    "amount": row[2],
-                    "subject": row[3],
-                    "provider": row[4],
-                }
+                Transaction(
+                    date=row[0],
+                    stt=row[1],
+                    amount=row[2],
+                    subject=row[3],
+                    provider=row[4],
+                )
                 for row in rows
             ]
 
